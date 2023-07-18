@@ -23,15 +23,15 @@ def compare_csv_files(old_file, new_file, column):
 
     # Create a Pandas Excel writer using XlsxWriter as the engine
     unix = str(time.time()).split('.')[0]
-    writer = pd.ExcelWriter('output-{}.xlsx'.format(unix), engine='xlsxwriter')
+    writer = pd.ExcelWriter('export/output-{}.xlsx'.format(unix), engine='xlsxwriter')
 
     # Write each DataFrame to a different worksheet
     new_df_filtered.to_excel(writer, sheet_name='New Fields', index=False)
     old_df_filtered.to_excel(writer, sheet_name='Missing Fields', index=False)
 
     # Close the Pandas Excel writer and output the Excel file
-    writer.save()
+    writer._save()
 
 
-# Usage:
-compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare')
+# Usage: compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare')
+compare_csv_files('import/2006.csv', 'import/2007.csv', 'ga_city')
