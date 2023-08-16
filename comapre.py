@@ -1,6 +1,9 @@
 import pandas as pd
 import time
 import re
+from os import listdir
+from os.path import isfile, join
+
 
 def cleanse_column_data(data):
     ''' Remove all non-alphanumeric characters except numbers and lowercase/uppercase alphabets '''
@@ -9,26 +12,32 @@ def cleanse_column_data(data):
     str_data = str(data)  # Convert data to string
     return ''.join(re.findall(r'[a-zA-Z0-9]', str_data))
 
+
 def insert_original_column(df, column):
     ''' Inserts a copy of the given column right next to it with a prefix "original_" '''
     col_index = df.columns.get_loc(column)
     df.insert(col_index, f"original_{column}", df[column])
+
 
 def cleanse_and_store_original(df, columns):
     for col in columns:
         insert_original_column(df, col)
         df[col] = df[col].apply(cleanse_column_data)
 
+
 def get_combined_values_for_columns(df, columns):
     return set(df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1))
 
-def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=True):
+
+def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=False):
     if isinstance(columns, str):
         columns = [columns]
 
     # Read in the csv files
-    old_df = pd.read_csv(old_file)
-    new_df = pd.read_csv(new_file)
+    old_df = pd.read_csv(
+        old_file, sep=',', error_bad_lines=False, index_col=False, dtype='unicode')
+    new_df = pd.read_csv(
+        new_file, sep=',', error_bad_lines=False, index_col=False, dtype='unicode')
 
     # Ensure that the columns exist in both DataFrames
     for col in columns:
@@ -43,13 +52,15 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     # Find new and missing fields
     old_values = get_combined_values_for_columns(old_df, columns)
     new_values = get_combined_values_for_columns(new_df, columns)
-    
+
     new_fields = new_values - old_values
     missing_fields = old_values - new_values
 
     # Filter based on combined values
-    old_df['combined'] = old_df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1)
-    new_df['combined'] = new_df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1)
+    old_df['combined'] = old_df[columns].apply(
+        lambda x: '|'.join(map(str, x)), axis=1)
+    new_df['combined'] = new_df[columns].apply(
+        lambda x: '|'.join(map(str, x)), axis=1)
 
     new_df_filtered = new_df[new_df['combined'].isin(new_fields)]
     old_df_filtered = old_df[old_df['combined'].isin(missing_fields)]
@@ -69,7 +80,32 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     old_df_filtered.to_excel(writer, sheet_name='Missing Fields', index=False)
 
     # Close the Pandas Excel writer and output the Excel file
-    writer._save()
+    writer.save()
+
 
 # Usage:
-compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare', exportName='report_name')
+# compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare', exportName='report_name')
+baseArchitecture = r"basic-csv-comparator\import"
+folderNames = []
+driller = []
+
+idColumn = "instrumentIdentifier"
+
+for folder in folderNames:
+    path = f"{baseArchitecture}\{folder}"
+    files = {}
+
+    for drill in driller:
+        drilledPath = f"{path}\{drill}"
+        file = [f for f in listdir(drilledPath) if isfile(
+            join(drilledPath, f))][0]
+
+        files[drill.split()[1]] = (f"{drilledPath}\{file}")
+
+    # Fetch the comparison data
+    oldFile = files[""]
+    newFile = files[""]
+    exportName = f"{folder}-Compared"
+
+    print(f"Comparing {exportName} export file...")
+    compare_csv_files(oldFile, newFile, idColumn, exportName=exportName)
