@@ -13,23 +13,7 @@ def cleanse_column_data(data):
     return ''.join(re.findall(r'[a-zA-Z0-9]', str_data))
 
 
-def insert_original_column(df, column):
-    ''' Inserts a copy of the given column right next to it with a prefix "original_" '''
-    col_index = df.columns.get_loc(column)
-    df.insert(col_index, f"original_{column}", df[column])
-
-
-def cleanse_and_store_original(df, columns):
-    for col in columns:
-        insert_original_column(df, col)
-        df[col] = df[col].apply(cleanse_column_data)
-
-
-def get_combined_values_for_columns(df, columns):
-    return set(df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1))
-
-
-def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=False):
+def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=True):
     if isinstance(columns, str):
         columns = [columns]
 
@@ -46,25 +30,29 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
 
     # Cleanse the column data if cleanse_data is True
     if cleanse_data:
-        cleanse_and_store_original(old_df, columns)
-        cleanse_and_store_original(new_df, columns)
+        old_df[columns] = old_df[columns].applymap(cleanse_column_data)
+        new_df[columns] = new_df[columns].applymap(cleanse_column_data)
 
-    # Find new and missing fields
-    old_values = get_combined_values_for_columns(old_df, columns)
-    new_values = get_combined_values_for_columns(new_df, columns)
+    # Set index for both dataframes
+    old_df.set_index(columns, inplace=True)
+    new_df.set_index(columns, inplace=True)
+    
+    # Determine rows with matching indices
+    matched_indices = old_df.index.intersection(new_df.index)
+    
+    row_match_df = pd.DataFrame()
+    row_no_match_df = pd.DataFrame()
 
-    new_fields = new_values - old_values
-    missing_fields = old_values - new_values
-
-    # Filter based on combined values
-    old_df['combined'] = old_df[columns].apply(
-        lambda x: '|'.join(map(str, x)), axis=1)
-    new_df['combined'] = new_df[columns].apply(
-        lambda x: '|'.join(map(str, x)), axis=1)
-
-    new_df_filtered = new_df[new_df['combined'].isin(new_fields)]
-    old_df_filtered = old_df[old_df['combined'].isin(missing_fields)]
-
+    # Check each row for matching content
+    for idx in matched_indices:
+        old_row = old_df.loc[idx]
+        new_row = new_df.loc[idx]
+        
+        if old_row.equals(new_row):
+            row_match_df = row_match_df.append(old_df.loc[[idx]])
+        else:
+            row_no_match_df = row_no_match_df.append(old_df.loc[[idx]])
+    
     # Determine export file name
     if exportName:
         export_filename = 'export/{}.xlsx'.format(exportName)
@@ -74,10 +62,23 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
 
     # Create a Pandas Excel writer using XlsxWriter as the engine
     writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
+    workbook = writer.book
+    red_format = workbook.add_format({'bg_color': 'red'})
 
     # Write each DataFrame to a different worksheet
-    new_df_filtered.to_excel(writer, sheet_name='New Fields', index=False)
-    old_df_filtered.to_excel(writer, sheet_name='Missing Fields', index=False)
+    row_match_df.reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
+    row_no_match_df.reset_index().to_excel(writer, sheet_name='Row Did Not Match', index=False)
+    
+    # Get the worksheet to add formats
+    worksheet = writer.sheets['Row Did Not Match']
+
+    for idx, (old_row, new_row) in enumerate(zip(row_no_match_df.iterrows(), new_df.loc[row_no_match_df.index].iterrows())):
+        _, old_values = old_row
+        _, new_values = new_row
+        
+        for col_idx, (old_cell, new_cell) in enumerate(zip(old_values, new_values)):
+            if old_cell != new_cell:
+                worksheet.write(idx + 1, col_idx, str(old_cell), red_format)
 
     # Close the Pandas Excel writer and output the Excel file
     try:
