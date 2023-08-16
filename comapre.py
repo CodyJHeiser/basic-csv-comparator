@@ -1,29 +1,68 @@
 import pandas as pd
 import time
+import re
 
+def cleanse_column_data(data):
+    ''' Remove all non-alphanumeric characters except numbers and lowercase/uppercase alphabets '''
+    if pd.isna(data):  # Handle NaN values
+        return data
+    str_data = str(data)  # Convert data to string
+    return ''.join(re.findall(r'[a-zA-Z0-9]', str_data))
 
-def compare_csv_files(old_file, new_file, column):
+def insert_original_column(df, column):
+    ''' Inserts a copy of the given column right next to it with a prefix "original_" '''
+    col_index = df.columns.get_loc(column)
+    df.insert(col_index, f"original_{column}", df[column])
+
+def cleanse_and_store_original(df, columns):
+    for col in columns:
+        insert_original_column(df, col)
+        df[col] = df[col].apply(cleanse_column_data)
+
+def get_combined_values_for_columns(df, columns):
+    return set(df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1))
+
+def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=True):
+    if isinstance(columns, str):
+        columns = [columns]
+
     # Read in the csv files
     old_df = pd.read_csv(old_file)
     new_df = pd.read_csv(new_file)
 
-    # Ensure that the column exists in both DataFrames
-    assert column in old_df.columns, f"'{column}' not found in {old_file}"
-    assert column in new_df.columns, f"'{column}' not found in {new_file}"
+    # Ensure that the columns exist in both DataFrames
+    for col in columns:
+        assert col in old_df.columns, f"'{col}' not found in {old_file}"
+        assert col in new_df.columns, f"'{col}' not found in {new_file}"
+
+    # Cleanse the column data if cleanse_data is True
+    if cleanse_data:
+        cleanse_and_store_original(old_df, columns)
+        cleanse_and_store_original(new_df, columns)
 
     # Find new and missing fields
-    old_values = set(old_df[column])
-    new_values = set(new_df[column])
+    old_values = get_combined_values_for_columns(old_df, columns)
+    new_values = get_combined_values_for_columns(new_df, columns)
+    
     new_fields = new_values - old_values
     missing_fields = old_values - new_values
 
-    # Create DataFrames for new and missing fields
-    new_df_filtered = new_df[new_df[column].isin(new_fields)]
-    old_df_filtered = old_df[old_df[column].isin(missing_fields)]
+    # Filter based on combined values
+    old_df['combined'] = old_df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1)
+    new_df['combined'] = new_df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1)
+
+    new_df_filtered = new_df[new_df['combined'].isin(new_fields)]
+    old_df_filtered = old_df[old_df['combined'].isin(missing_fields)]
+
+    # Determine export file name
+    if exportName:
+        export_filename = 'export/{}.xlsx'.format(exportName)
+    else:
+        unix = str(time.time()).split('.')[0]
+        export_filename = 'export/output-{}.xlsx'.format(unix)
 
     # Create a Pandas Excel writer using XlsxWriter as the engine
-    unix = str(time.time()).split('.')[0]
-    writer = pd.ExcelWriter('export/output-{}.xlsx'.format(unix), engine='xlsxwriter')
+    writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
 
     # Write each DataFrame to a different worksheet
     new_df_filtered.to_excel(writer, sheet_name='New Fields', index=False)
@@ -32,6 +71,5 @@ def compare_csv_files(old_file, new_file, column):
     # Close the Pandas Excel writer and output the Excel file
     writer._save()
 
-
-# Usage: compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare')
-compare_csv_files('import/2006.csv', 'import/2007.csv', 'ga_city')
+# Usage:
+compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare', exportName='report_name')
