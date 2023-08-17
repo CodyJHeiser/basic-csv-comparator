@@ -55,15 +55,15 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
 
     new_fields = new_values - old_values
     missing_fields = old_values - new_values
+    matched_fields = old_values.intersection(new_values)  # Capture matched fields
 
     # Filter based on combined values
-    old_df['combined'] = old_df[columns].apply(
-        lambda x: '|'.join(map(str, x)), axis=1)
-    new_df['combined'] = new_df[columns].apply(
-        lambda x: '|'.join(map(str, x)), axis=1)
+    old_df['combined'] = old_df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1)
+    new_df['combined'] = new_df[columns].apply(lambda x: '|'.join(map(str, x)), axis=1)
 
     new_df_filtered = new_df[new_df['combined'].isin(new_fields)]
     old_df_filtered = old_df[old_df['combined'].isin(missing_fields)]
+    matched_df = new_df[new_df['combined'].isin(matched_fields)]  # Capture matched rows
 
     # Determine export file name
     if exportName:
@@ -78,6 +78,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     # Write each DataFrame to a different worksheet
     new_df_filtered.to_excel(writer, sheet_name='New Fields', index=False)
     old_df_filtered.to_excel(writer, sheet_name='Missing Fields', index=False)
+    matched_df.to_excel(writer, sheet_name='Matched', index=False)  # Export matched rows
 
     # Close the Pandas Excel writer and output the Excel file
     try:
@@ -89,6 +90,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
             print(f"Error saving file: {e}")
 
     print(f"Successfully exported to {export_filename}")
+
 
 # Usage:
 # compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare', exportName='report_name')
