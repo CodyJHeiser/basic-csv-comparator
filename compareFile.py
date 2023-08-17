@@ -26,7 +26,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     perfectly_matched_df, partially_matched_df, not_matched_to_old_df, new_rows_found_df = _create_comparative_dfs(
         old_file, new_file, old_df, new_df, perfectly_matched_rows, mismatched_to_new_rows, mismatched_to_old_rows)
 
-    _export_to_excel(old_df, new_df, perfectly_matched_df, partially_matched_df,
+    _export_to_excel(old_df, new_df, old_file, new_file, perfectly_matched_df, partially_matched_df,
                      not_matched_to_old_df, new_rows_found_df, exportName)
 
 
@@ -68,52 +68,38 @@ def _create_comparative_dfs(old_file, new_file, old_df, new_df, perfectly_matche
     new_df = new_df.add_suffix(f"_{new_suffix}")
 
     perfectly_matched_df = old_df[perfectly_matched_rows]
+
+    # Find the differences in rows between old and new
+    not_matched_to_old_df = old_df.loc[old_df.index.difference(new_df.index)]
+    new_rows_found_df = new_df.loc[new_df.index.difference(old_df.index)]
+
+    # Create a set of indices we don't want in the partially matched dataframe
+    exclude_indices = set(perfectly_matched_df.index) | set(
+        not_matched_to_old_df.index) | set(new_rows_found_df.index)
+
+    # Now we will remove those indices from the old and new DataFrames to get the partial matches
+    old_partial_match = old_df.loc[~old_df.index.isin(exclude_indices)]
+    new_partial_match = new_df.loc[~new_df.index.isin(exclude_indices)]
+
+    # Now filter out the rows that don't match between the two datasets to get our partially matched dataframes
+    mismatched_to_new_rows = ~old_partial_match.eq(
+        new_partial_match).all(axis=1)
+    mismatched_to_old_rows = ~new_partial_match.eq(
+        old_partial_match).all(axis=1)
+
     old_partially_matched_df = old_df[mismatched_to_new_rows &
                                       ~perfectly_matched_rows]
     new_partially_matched_df = new_df[mismatched_to_old_rows &
                                       ~perfectly_matched_rows]
 
-    not_matched_to_old_df = old_df.loc[old_df.index.difference(new_df.index)]
-    new_rows_found_df = new_df.loc[new_df.index.difference(old_df.index)]
-
+    # Concatenate the old and new partially matched dataframes
     partially_matched_df = pd.concat(
         [old_partially_matched_df, new_partially_matched_df], axis=1)
 
     return perfectly_matched_df, partially_matched_df, not_matched_to_old_df, new_rows_found_df
 
-# old_suffix = old_file.split('\\').pop().split('.')[0].replace(" ", "_")
-# new_suffix = new_file.split('\\').pop().split('.')[0].replace(" ", "_")
 
-# old_df = old_df[new_df.columns]
-# old_df = old_df.add_suffix(f"_{old_suffix}")
-# new_df = new_df.add_suffix(f"_{new_suffix}")
-
-# perfectly_matched_df = old_df[perfectly_matched_rows]
-
-# # Find the differences in rows between old and new
-# not_matched_to_old_df = old_df.loc[old_df.index.difference(new_df.index)]
-# new_rows_found_df = new_df.loc[new_df.index.difference(old_df.index)]
-
-# # Create a set of indices we don't want in the partially matched dataframe
-# exclude_indices = set(perfectly_matched_df.index) | set(not_matched_to_old_df.index) | set(new_rows_found_df.index)
-
-# # Now we will remove those indices from the old and new DataFrames to get the partial matches
-# old_partial_match = old_df.loc[~old_df.index.isin(exclude_indices)]
-# new_partial_match = new_df.loc[~new_df.index.isin(exclude_indices)]
-
-# # Now filter out the rows that don't match between the two datasets to get our partially matched dataframes
-# mismatched_to_new_rows = ~old_partial_match.eq(new_partial_match).all(axis=1)
-# mismatched_to_old_rows = ~new_partial_match.eq(old_partial_match).all(axis=1)
-
-# old_partially_matched_df = old_partial_match[mismatched_to_new_rows]
-# new_partially_matched_df = new_partial_match[mismatched_to_old_rows]
-
-# # Concatenate the old and new partially matched dataframes
-# partially_matched_df = pd.concat([old_partially_matched_df, new_partially_matched_df], axis=1)
-
-
-
-def _export_to_excel(old_df, new_df, perfectly_matched_df, partially_matched_df, not_matched_to_old_df, new_rows_found_df, exportName):
+def _export_to_excel(old_df, new_df, old_file, new_file, perfectly_matched_df, partially_matched_df, not_matched_to_old_df, new_rows_found_df, exportName):
     export_filename = f'export/{exportName if exportName else str(time.time()).split(".")[0]}.xlsx'
     with pd.ExcelWriter(export_filename, engine='xlsxwriter') as writer:
         workbook = writer.book
@@ -125,27 +111,29 @@ def _export_to_excel(old_df, new_df, perfectly_matched_df, partially_matched_df,
 
         # Export dataframes to Excel
         perfectly_matched_df.reset_index().to_excel(
-            writer, sheet_name='perfectly_matched_rows', index=False)
+            writer, sheet_name='Matching', index=False)
         partially_matched_df.reset_index().to_excel(
-            writer, sheet_name='partially_matched_df', index=False)
+            writer, sheet_name='Non-Matching', index=False)
         not_matched_to_old_df.reset_index().to_excel(
-            writer, sheet_name='not_matched_to_old_df', index=False)
+            writer, sheet_name='Old-Not-In-New', index=False)
         new_rows_found_df.reset_index().to_excel(
-            writer, sheet_name='new_rows_found_df', index=False)
+            writer, sheet_name='New-Not-In-Old', index=False)
 
-        _highlight_mismatches(writer, 'partially_matched_df',
+        _highlight_mismatches(writer, 'Non-Matching', partially_matched_df, old_file, new_file,
                               old_df.columns, new_df.columns, red_format_old, red_format_new)
 
     print(f"Successfully exported to {export_filename}")
 
 
-def _highlight_mismatches(writer, sheet_name, old_columns, new_columns, red_format_old, red_format_new):
+def _highlight_mismatches(writer, sheet_name, partially_matched_df, old_file, new_file, old_columns, new_columns, red_format_old, red_format_new):
     worksheet = writer.sheets[sheet_name]
-    df = writer.sheets_frames[sheet_name]
+    old_suffix = old_file.split('\\').pop().split('.')[0].replace(" ", "_")
+    new_suffix = new_file.split('\\').pop().split('.')[0].replace(" ", "_")
 
-    for row_idx, row in df.iterrows():
+    for row_idx, (index, row) in enumerate(partially_matched_df.iterrows()):
         for col_idx, (old_col, new_col) in enumerate(zip(old_columns, new_columns)):
-            old_cell, new_cell = str(row[old_col]), str(row[new_col])
+            old_cell, new_cell = str(row[f"{old_col}_{old_suffix}"]), str(
+                row[f"{new_col}_{new_suffix}"])
 
             if old_cell != new_cell:
                 worksheet.write(row_idx + 1, 2 * col_idx + 1,
@@ -157,8 +145,7 @@ def _highlight_mismatches(writer, sheet_name, old_columns, new_columns, red_form
 def cleanse_column_data(data):
     # Add your cleansing logic here
     return data
-
-
+    
 # Example call
 # compare_csv_files("old_file.csv", "new_file.csv", "column_name")
    
