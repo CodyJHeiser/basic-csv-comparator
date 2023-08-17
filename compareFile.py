@@ -13,7 +13,7 @@ def cleanse_column_data(data):
     return ''.join(re.findall(r'[a-zA-Z0-9]', str_data))
 
 
-def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=True):
+def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data=False):
     if isinstance(columns, str):
         columns = [columns]
 
@@ -36,13 +36,22 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     new_df.set_index(columns, drop=True, inplace=True)
     old_df = old_df[new_df.columns]
 
-     # Create side-by-side comparison DataFrame
-    oldSuffixName=old_file.split('\\').pop().split('.')[0]
-    newSuffixName=new_file.split('\\').pop().split('.')[0]
-    comparison_df = pd.concat([old_df.add_suffix(f"_{oldSuffixName}"), new_df.add_suffix(f"_{newSuffixName}")], axis=1)
+    # Create side-by-side comparison DataFrame
+    oldSuffixName = old_file.split('\\').pop().split('.')[0]
+    newSuffixName = new_file.split('\\').pop().split('.')[0]
 
-    # Interleave columns for a side-by-side view
-    cols = [item for pair in zip(old_df.columns + f"_{oldSuffixName}", new_df.columns + f"_{newSuffixName}") for item in pair]
+    # Append the suffixes to each DataFrame's columns
+    old_df = old_df.add_suffix(f"_{oldSuffixName}")
+    new_df = new_df.add_suffix(f"_{newSuffixName}")
+
+    # Concatenate the DataFrames
+    comparison_df = pd.concat([old_df, new_df], axis=1)
+
+    # Interleave columns using column indices for a side-by-side view
+    old_columns = old_df.columns.tolist()
+    new_columns = new_df.columns.tolist()
+
+    cols = [item for pair in zip(old_columns, new_columns) for item in pair]
     comparison_df = comparison_df[cols]
 
     # Identify mismatched rows for side-by-side comparison
@@ -106,4 +115,4 @@ for folder in folderNames:
     exportName = f"{folder}-Compared"
 
     print(f"Comparing {exportName} export file...")
-    compare_csv_files(oldFile, newFile, idColumn, exportName=exportName)
+    compare_csv_files(oldFile, newFile, idColumn, exportName=exportName, cleanse_data=False)
