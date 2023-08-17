@@ -31,7 +31,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
         old_df[columns] = old_df[columns].applymap(cleanse_column_data)
         new_df[columns] = new_df[columns].applymap(cleanse_column_data)
 
-    # Set indices and match column order33
+    # Set indices and match column order
     old_df.set_index(columns, drop=True, inplace=True)
     new_df.set_index(columns, drop=True, inplace=True)
     old_df = old_df[new_df.columns]
@@ -44,32 +44,27 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     old_df = old_df.add_suffix(f"_{oldSuffixName}")
     new_df = new_df.add_suffix(f"_{newSuffixName}")
 
-    # Concatenate the DataFrames
+    # Concatenate the DataFrames and interleave columns
     comparison_df = pd.concat([old_df, new_df], axis=1)
-
-    # Interleave columns using column indices for a side-by-side view
-    old_columns = old_df.columns.tolist()
-    new_columns = new_df.columns.tolist()
-
-    cols = [item for pair in zip(old_columns, new_columns) for item in pair]
+    cols = [item for pair in zip(old_df.columns, new_df.columns) for item in pair]
     comparison_df = comparison_df[cols]
 
     # Identify mismatched rows for side-by-side comparison
     mismatched_rows = ~old_df.eq(new_df).all(axis=1)
+    mismatched_rows = mismatched_rows.reindex(comparison_df.index, fill_value=False)
     row_no_match_df = comparison_df.loc[mismatched_rows]
-
-    # Determine export file name
-    export_filename = 'export/{}.xlsx'.format(exportName if exportName else str(time.time()).split('.')[0])
+    mismatched_rows = mismatched_rows.reindex(old_df.index, fill_value=False)
 
     # Excel writer setup
+    export_filename = 'export/{}.xlsx'.format(exportName if exportName else str(time.time()).split('.')[0])
     writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
     workbook = writer.book
-    red_format = workbook.add_format({'bg_color': 'red'})   
+    red_format = workbook.add_format({'bg_color': 'red'})
 
     # Write DataFrames to Excel
     old_df[mismatched_rows].reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
     row_no_match_df.reset_index().to_excel(writer, sheet_name='Row Did Not Match', index=False)
-    
+
     # Highlight non-matching cells in 'Row Did Not Match' sheet
     worksheet = writer.sheets['Row Did Not Match']
     for row_idx, (_, row) in enumerate(row_no_match_df.iterrows()):
@@ -89,6 +84,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
             print(f"Error saving file: {e}")
 
     print(f"Successfully exported to {export_filename}")
+
 
 # Usage:
 # compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare', exportName='report_name')
