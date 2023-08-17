@@ -36,6 +36,10 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     # Set indices and match column order
     old_df.set_index(columns, drop=True, inplace=True)
     new_df.set_index(columns, drop=True, inplace=True)
+
+    # Rows that matched perfectly
+    perfectly_matched_rows = old_df.eq(new_df).all(axis=1)
+
     old_df = old_df[new_df.columns]
 
     # Create side-by-side comparison DataFrame
@@ -46,12 +50,11 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     old_df = old_df.add_suffix(f"_{oldSuffixName}")
     new_df = new_df.add_suffix(f"_{newSuffixName}")
 
-    # Rows that matched perfectly
-    perfectly_matched_rows = old_df.eq(new_df).all(axis=1)
-
-    # Rows that were in old, but not in new (based on indices)
     not_in_new = old_df.index.difference(new_df.index)
     not_in_old = new_df.index.difference(old_df.index)
+
+    not_matched_to_old_df = old_df.loc[not_in_new]
+    new_rows_found_df = new_df.loc[not_in_old]  # .reset_index()
 
     # Concatenate the DataFrames and interleave columns
     comparison_df = pd.concat([old_df, new_df], axis=1)
@@ -60,16 +63,30 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     comparison_df = comparison_df[cols]
 
     # Identify mismatched rows for side-by-side comparison
-    mismatched_rows = ~old_df.eq(new_df).all(axis=1)
-    mismatched_rows = mismatched_rows.reindex(comparison_df.index, fill_value=False)
-    # row_no_match_df = comparison_df.loc[mismatched_rows]
-    mismatched_rows = mismatched_rows.reindex(old_df.index, fill_value=False)
+    mismatched_to_new_rows = ~old_df.eq(new_df).all(axis=1)
+    mismatched_to_new_rows = mismatched_to_new_rows.reindex(
+        comparison_df.index, fill_value=False)
+    mismatched_to_new_rows = mismatched_to_new_rows.reindex(
+        old_df.index, fill_value=False)
 
-    # Create specific DataFrames
+    mismatched_to_old_rows = ~new_df.eq(old_df).all(axis=1)
+    mismatched_to_old_rows = mismatched_to_old_rows.reindex(
+        comparison_df.index, fill_value=False)
+    mismatched_to_old_rows = mismatched_to_old_rows.reindex(
+        new_df.index, fill_value=False)
+
     perfectly_matched_df = old_df[perfectly_matched_rows]
-    partially_matched_df = old_df[mismatched_rows & ~perfectly_matched_rows]
-    not_matched_to_old_df = old_df.loc[not_in_new]
-    new_rows_found_df = new_df.loc[not_in_old].reset_index()
+    old_partially_matched_df = old_df[mismatched_to_new_rows &
+                                      mismatched_to_old_rows & ~perfectly_matched_rows]
+    new_partially_matched_df = new_df[mismatched_to_new_rows &
+                                      mismatched_to_old_rows & ~perfectly_matched_rows]
+
+    # Concatenate the DataFrames and interleave columns
+    partially_matched_df = pd.concat(
+        [old_partially_matched_df, new_partially_matched_df], axis=1)
+    partial_cols = [item for pair in zip(old_partially_matched_df.columns, new_partially_matched_df.columns)
+                    for item in pair]
+    partially_matched_df = partially_matched_df[partial_cols]
 
     # Excel writer setup
     export_filename = 'export/{}.xlsx'.format(
@@ -82,35 +99,24 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     red_format_new = workbook.add_format(
         {'bg_color': 'blue', 'font_color': 'white'})  # for new_df
 
-    # Write DataFrames to Excel
-    # old_df[mismatched_rows].reset_index().to_excel(
-    #     writer, sheet_name='Row Matched', index=False)
-    # row_no_match_df.reset_index().to_excel(
-    #     writer, sheet_name='Row Did Not Match', index=False)
-    
-    # Write DataFrames to Excel
-    perfectly_matched_df.reset_index().to_excel(writer, sheet_name='Row Matched Perfectly', index=False)
-    partially_matched_df.reset_index().to_excel(writer, sheet_name='Row Matched Partially', index=False)
-    not_matched_to_old_df.reset_index().to_excel(writer, sheet_name='Rows Not Matched to Old', index=False)
-    new_rows_found_df.to_excel(writer, sheet_name='New Rows Found', index=False)
+    # Good
+    perfectly_matched_df.reset_index().to_excel(
+        writer, sheet_name='perfectly_matched_rows', index=False)
+    partially_matched_df.reset_index().to_excel(
+        writer, sheet_name='partially_matched_df', index=False)
+    not_matched_to_old_df.reset_index().to_excel(
+        writer, sheet_name='not_matched_to_old_df', index=False)
+    new_rows_found_df.reset_index().to_excel(
+        writer, sheet_name='new_rows_found_df', index=False)
 
     # Highlight non-matching cells in 'Row Did Not Match' sheet
-    worksheet = writer.sheets['Row Matched Partially']
+    worksheet = writer.sheets['partially_matched_df']
 
     for row_idx, (index, row) in enumerate(partially_matched_df.iterrows()):
         for col_idx, (old_col, new_col) in enumerate(zip(old_df.columns, new_df.columns)):
 
             old_cell = row[old_col]
             new_cell = row[new_col]
-
-            if (index == "00007235-REMGT-RC097-CFHFI"):
-                isequal = old_cell == new_cell
-
-                writter = f'"{old_df.columns[col_idx]}","{new_df.columns[col_idx]}","{row_idx}","{index}","{col_idx}","{old_cell}","{new_cell}","{isequal}"\n'
-
-                f = open("matched.csv", "a")
-                f.write(writter)
-                f.close()
 
             if pd.isna(old_cell):
                 old_cell = ''
@@ -119,7 +125,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
 
             if old_cell != new_cell:
                 worksheet.write(row_idx + 1, 2*col_idx+1,
-                                str(old_cell), red_format_old)     # old_cell
+                                str(old_cell), red_format_old)  # old_cell
                 worksheet.write(row_idx + 1, 2*col_idx+2,
                                 str(new_cell), red_format_new)  # new_cell
     try:
