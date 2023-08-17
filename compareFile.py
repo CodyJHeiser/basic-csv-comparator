@@ -18,8 +18,10 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
         columns = [columns]
 
     # Read in the csv files
-    old_df = pd.read_csv(old_file, sep=',', error_bad_lines=False, dtype='unicode')
-    new_df = pd.read_csv(new_file, sep=',', error_bad_lines=False, dtype='unicode')
+    old_df = pd.read_csv(
+        old_file, sep=',', error_bad_lines=False, dtype='unicode')
+    new_df = pd.read_csv(
+        new_file, sep=',', error_bad_lines=False, dtype='unicode')
 
     # Ensure columns exist in both DataFrames
     for col in columns:
@@ -46,37 +48,62 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
 
     # Concatenate the DataFrames and interleave columns
     comparison_df = pd.concat([old_df, new_df], axis=1)
-    cols = [item for pair in zip(old_df.columns, new_df.columns) for item in pair]
+    cols = [item for pair in zip(old_df.columns, new_df.columns)
+            for item in pair]
     comparison_df = comparison_df[cols]
 
     # Identify mismatched rows for side-by-side comparison
     mismatched_rows = ~old_df.eq(new_df).all(axis=1)
-    mismatched_rows = mismatched_rows.reindex(comparison_df.index, fill_value=False)
+    mismatched_rows = mismatched_rows.reindex(
+        comparison_df.index, fill_value=False)
     row_no_match_df = comparison_df.loc[mismatched_rows]
     mismatched_rows = mismatched_rows.reindex(old_df.index, fill_value=False)
 
     # Excel writer setup
-    export_filename = 'export/{}.xlsx'.format(exportName if exportName else str(time.time()).split('.')[0])
+    export_filename = 'export/{}.xlsx'.format(
+        exportName if exportName else str(time.time()).split('.')[0])
     writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
     workbook = writer.book
-    red_format_old = workbook.add_format({'bg_color': 'red', 'font_color': 'white'})  # for old_df
-    red_format_new = workbook.add_format({'bg_color': 'blue', 'font_color': 'white'})  # for new_df
+
+    red_format_old = workbook.add_format(
+        {'bg_color': 'red', 'font_color': 'white'})  # for old_df
+    red_format_new = workbook.add_format(
+        {'bg_color': 'blue', 'font_color': 'white'})  # for new_df
 
     # Write DataFrames to Excel
-    old_df[mismatched_rows].reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
-    row_no_match_df.reset_index().to_excel(writer, sheet_name='Row Did Not Match', index=False)
+    old_df[mismatched_rows].reset_index().to_excel(
+        writer, sheet_name='Row Matched', index=False)
+    row_no_match_df.reset_index().to_excel(
+        writer, sheet_name='Row Did Not Match', index=False)
 
     # Highlight non-matching cells in 'Row Did Not Match' sheet
     worksheet = writer.sheets['Row Did Not Match']
-    for row_idx, (_, row) in enumerate(row_no_match_df.iterrows()):
-        for col_idx in range(0, len(row) // 2):
-            old_cell = row[f"{old_df.columns[col_idx]}"]
-            new_cell = row[f"{new_df.columns[col_idx]}"]
+
+    for row_idx, (index, row) in enumerate(row_no_match_df.iterrows()):
+        for col_idx, (old_col, new_col) in enumerate(zip(old_df.columns, new_df.columns)):
+
+            old_cell = row[old_col]
+            new_cell = row[new_col]
+
+            if (index == "00007235-REMGT-RC097-CFHFI"):
+                isequal = old_cell == new_cell
+
+                writter = f'"{old_df.columns[col_idx]}","{new_df.columns[col_idx]}","{row_idx}","{index}","{col_idx}","{old_cell}","{new_cell}","{isequal}"\n'
+
+                f = open("matched.csv", "a")
+                f.write(writter)
+                f.close()
+
+            if pd.isna(old_cell):
+                old_cell = ''
+            if pd.isna(new_cell):
+                new_cell = ''
+
             if old_cell != new_cell:
-                worksheet.write(row_idx + 1, 2*col_idx, str(old_cell), red_format_old)     # old_cell
-                worksheet.write(row_idx + 1, 2*col_idx + 1, str(new_cell), red_format_new) # new_cell
-
-
+                worksheet.write(row_idx + 1, 2*col_idx+1,
+                                str(old_cell), red_format_old)     # old_cell
+                worksheet.write(row_idx + 1, 2*col_idx+2,
+                                str(new_cell), red_format_new)  # new_cell
     try:
         writer.save()
     except Exception:
@@ -86,8 +113,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
             print(f"Error saving file: {e}")
 
     print(f"Successfully exported to {export_filename}")
-
-
+    
 # Usage:
 # compare_csv_files('old.csv', 'new.csv', 'column_name_to_compare', exportName='report_name')
 baseArchitecture = r"basic-csv-comparator\import"
