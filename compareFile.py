@@ -31,13 +31,19 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
         old_df[columns] = old_df[columns].applymap(cleanse_column_data)
         new_df[columns] = new_df[columns].applymap(cleanse_column_data)
 
-    # Set indices and match column order
+    # Set indices and match column order33
     old_df.set_index(columns, drop=True, inplace=True)
     new_df.set_index(columns, drop=True, inplace=True)
     old_df = old_df[new_df.columns]
 
-    # Create side-by-side comparison DataFrame
-    comparison_df = pd.concat([old_df.add_suffix(f"_{old_file}"), new_df.add_suffix(f"_{new_file}")], axis=1)
+     # Create side-by-side comparison DataFrame
+    oldSuffixName=old_file.split('\\').pop().split('.')[0]
+    newSuffixName=new_file.split('\\').pop().split('.')[0]
+    comparison_df = pd.concat([old_df.add_suffix(f"_{oldSuffixName}"), new_df.add_suffix(f"_{newSuffixName}")], axis=1)
+
+    # Interleave columns for a side-by-side view
+    cols = [item for pair in zip(old_df.columns + f"_{oldSuffixName}", new_df.columns + f"_{newSuffixName}") for item in pair]
+    comparison_df = comparison_df[cols]
 
     # Identify mismatched rows for side-by-side comparison
     mismatched_rows = ~old_df.eq(new_df).all(axis=1)
@@ -49,7 +55,7 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     # Excel writer setup
     writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
     workbook = writer.book
-    red_format = workbook.add_format({'bg_color': 'red'})
+    red_format = workbook.add_format({'bg_color': 'red'})   
 
     # Write DataFrames to Excel
     old_df[mismatched_rows].reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
@@ -59,8 +65,8 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     worksheet = writer.sheets['Row Did Not Match']
     for row_idx, (_, row) in enumerate(row_no_match_df.iterrows()):
         for col_idx in range(0, len(row) // 2):
-            old_cell = row[f"{old_df.columns[col_idx]}_{old_file}"]
-            new_cell = row[f"{new_df.columns[col_idx]}_{new_file}"]
+            old_cell = row[f"{old_df.columns[col_idx]}_{oldSuffixName}"]
+            new_cell = row[f"{new_df.columns[col_idx]}_{newSuffixName}"]
             if old_cell != new_cell:
                 worksheet.write(row_idx + 1, 2*col_idx, str(old_cell), red_format)     # old_cell
                 worksheet.write(row_idx + 1, 2*col_idx + 1, str(new_cell), red_format) # new_cell
