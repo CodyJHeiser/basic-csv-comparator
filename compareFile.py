@@ -46,6 +46,13 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     old_df = old_df.add_suffix(f"_{oldSuffixName}")
     new_df = new_df.add_suffix(f"_{newSuffixName}")
 
+    # Rows that matched perfectly
+    perfectly_matched_rows = old_df.eq(new_df).all(axis=1)
+
+    # Rows that were in old, but not in new (based on indices)
+    not_in_new = old_df.index.difference(new_df.index)
+    not_in_old = new_df.index.difference(old_df.index)
+
     # Concatenate the DataFrames and interleave columns
     comparison_df = pd.concat([old_df, new_df], axis=1)
     cols = [item for pair in zip(old_df.columns, new_df.columns)
@@ -54,10 +61,15 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
 
     # Identify mismatched rows for side-by-side comparison
     mismatched_rows = ~old_df.eq(new_df).all(axis=1)
-    mismatched_rows = mismatched_rows.reindex(
-        comparison_df.index, fill_value=False)
-    row_no_match_df = comparison_df.loc[mismatched_rows]
+    mismatched_rows = mismatched_rows.reindex(comparison_df.index, fill_value=False)
+    # row_no_match_df = comparison_df.loc[mismatched_rows]
     mismatched_rows = mismatched_rows.reindex(old_df.index, fill_value=False)
+
+    # Create specific DataFrames
+    perfectly_matched_df = old_df[perfectly_matched_rows]
+    partially_matched_df = old_df[mismatched_rows & ~perfectly_matched_rows]
+    not_matched_to_old_df = old_df.loc[not_in_new]
+    new_rows_found_df = new_df.loc[not_in_old].reset_index()
 
     # Excel writer setup
     export_filename = 'export/{}.xlsx'.format(
@@ -71,15 +83,21 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
         {'bg_color': 'blue', 'font_color': 'white'})  # for new_df
 
     # Write DataFrames to Excel
-    old_df[mismatched_rows].reset_index().to_excel(
-        writer, sheet_name='Row Matched', index=False)
-    row_no_match_df.reset_index().to_excel(
-        writer, sheet_name='Row Did Not Match', index=False)
+    # old_df[mismatched_rows].reset_index().to_excel(
+    #     writer, sheet_name='Row Matched', index=False)
+    # row_no_match_df.reset_index().to_excel(
+    #     writer, sheet_name='Row Did Not Match', index=False)
+    
+    # Write DataFrames to Excel
+    perfectly_matched_df.reset_index().to_excel(writer, sheet_name='Row Matched Perfectly', index=False)
+    partially_matched_df.reset_index().to_excel(writer, sheet_name='Row Matched Partially', index=False)
+    not_matched_to_old_df.reset_index().to_excel(writer, sheet_name='Rows Not Matched to Old', index=False)
+    new_rows_found_df.to_excel(writer, sheet_name='New Rows Found', index=False)
 
     # Highlight non-matching cells in 'Row Did Not Match' sheet
-    worksheet = writer.sheets['Row Did Not Match']
+    worksheet = writer.sheets['Row Matched Partially']
 
-    for row_idx, (index, row) in enumerate(row_no_match_df.iterrows()):
+    for row_idx, (index, row) in enumerate(partially_matched_df.iterrows()):
         for col_idx, (old_col, new_col) in enumerate(zip(old_df.columns, new_df.columns)):
 
             old_cell = row[old_col]
