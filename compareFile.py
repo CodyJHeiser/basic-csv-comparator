@@ -59,7 +59,8 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     export_filename = 'export/{}.xlsx'.format(exportName if exportName else str(time.time()).split('.')[0])
     writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
     workbook = writer.book
-    red_format = workbook.add_format({'bg_color': 'red'})
+    red_format_old = workbook.add_format({'bg_color': 'red', 'font_color': 'white'})  # for old_df
+    red_format_new = workbook.add_format({'bg_color': 'blue', 'font_color': 'white'})  # for new_df
 
     # Write DataFrames to Excel
     old_df[mismatched_rows].reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
@@ -69,11 +70,12 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
     worksheet = writer.sheets['Row Did Not Match']
     for row_idx, (_, row) in enumerate(row_no_match_df.iterrows()):
         for col_idx in range(0, len(row) // 2):
-            old_cell = row[f"{old_df.columns[col_idx]}_{oldSuffixName}"]
-            new_cell = row[f"{new_df.columns[col_idx]}_{newSuffixName}"]
+            old_cell = row[f"{old_df.columns[col_idx]}"]
+            new_cell = row[f"{new_df.columns[col_idx]}"]
             if old_cell != new_cell:
-                worksheet.write(row_idx + 1, 2*col_idx, str(old_cell), red_format)     # old_cell
-                worksheet.write(row_idx + 1, 2*col_idx + 1, str(new_cell), red_format) # new_cell
+                worksheet.write(row_idx + 1, 2*col_idx, str(old_cell), red_format_old)     # old_cell
+                worksheet.write(row_idx + 1, 2*col_idx + 1, str(new_cell), red_format_new) # new_cell
+
 
     try:
         writer.save()
