@@ -18,69 +18,53 @@ def compare_csv_files(old_file, new_file, columns, exportName=None, cleanse_data
         columns = [columns]
 
     # Read in the csv files
-    old_df = pd.read_csv(
-        old_file, sep=',', error_bad_lines=False, index_col=False, dtype='unicode')
-    new_df = pd.read_csv(
-        new_file, sep=',', error_bad_lines=False, index_col=False, dtype='unicode')
+    old_df = pd.read_csv(old_file, sep=',', error_bad_lines=False, dtype='unicode')
+    new_df = pd.read_csv(new_file, sep=',', error_bad_lines=False, dtype='unicode')
 
-    # Ensure that the columns exist in both DataFrames
+    # Ensure columns exist in both DataFrames
     for col in columns:
         assert col in old_df.columns, f"'{col}' not found in {old_file}"
         assert col in new_df.columns, f"'{col}' not found in {new_file}"
 
-    # Cleanse the column data if cleanse_data is True
+    # Cleanse data if required
     if cleanse_data:
         old_df[columns] = old_df[columns].applymap(cleanse_column_data)
         new_df[columns] = new_df[columns].applymap(cleanse_column_data)
 
-    # Set index for both dataframes
-    old_df.set_index(columns, inplace=True)
-    new_df.set_index(columns, inplace=True)
-    
-    # Determine rows with matching indices
-    matched_indices = old_df.index.intersection(new_df.index)
-    
-    row_match_df = pd.DataFrame()
-    row_no_match_df = pd.DataFrame()
+    # Set indices and match column order
+    old_df.set_index(columns, drop=True, inplace=True)
+    new_df.set_index(columns, drop=True, inplace=True)
+    old_df = old_df[new_df.columns]
 
-    # Check each row for matching content
-    for idx in matched_indices:
-        old_row = old_df.loc[idx]
-        new_row = new_df.loc[idx]
-        
-        if old_row.equals(new_row):
-            row_match_df = row_match_df.append(old_df.loc[[idx]])
-        else:
-            row_no_match_df = row_no_match_df.append(old_df.loc[[idx]])
-    
+    # Create side-by-side comparison DataFrame
+    comparison_df = pd.concat([old_df.add_suffix(f"_{old_file}"), new_df.add_suffix(f"_{new_file}")], axis=1)
+
+    # Identify mismatched rows for side-by-side comparison
+    mismatched_rows = ~old_df.eq(new_df).all(axis=1)
+    row_no_match_df = comparison_df.loc[mismatched_rows]
+
     # Determine export file name
-    if exportName:
-        export_filename = 'export/{}.xlsx'.format(exportName)
-    else:
-        unix = str(time.time()).split('.')[0]
-        export_filename = 'export/output-{}.xlsx'.format(unix)
+    export_filename = 'export/{}.xlsx'.format(exportName if exportName else str(time.time()).split('.')[0])
 
-    # Create a Pandas Excel writer using XlsxWriter as the engine
+    # Excel writer setup
     writer = pd.ExcelWriter(export_filename, engine='xlsxwriter')
     workbook = writer.book
     red_format = workbook.add_format({'bg_color': 'red'})
 
-    # Write each DataFrame to a different worksheet
-    row_match_df.reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
+    # Write DataFrames to Excel
+    old_df[mismatched_rows].reset_index().to_excel(writer, sheet_name='Row Matched', index=False)
     row_no_match_df.reset_index().to_excel(writer, sheet_name='Row Did Not Match', index=False)
     
-    # Get the worksheet to add formats
+    # Highlight non-matching cells in 'Row Did Not Match' sheet
     worksheet = writer.sheets['Row Did Not Match']
-
-    for idx, (old_row, new_row) in enumerate(zip(row_no_match_df.iterrows(), new_df.loc[row_no_match_df.index].iterrows())):
-        _, old_values = old_row
-        _, new_values = new_row
-        
-        for col_idx, (old_cell, new_cell) in enumerate(zip(old_values, new_values)):
+    for row_idx, (_, row) in enumerate(row_no_match_df.iterrows()):
+        for col_idx in range(0, len(row) // 2):
+            old_cell = row[f"{old_df.columns[col_idx]}_{old_file}"]
+            new_cell = row[f"{new_df.columns[col_idx]}_{new_file}"]
             if old_cell != new_cell:
-                worksheet.write(idx + 1, col_idx, str(old_cell), red_format)
+                worksheet.write(row_idx + 1, 2*col_idx, str(old_cell), red_format)     # old_cell
+                worksheet.write(row_idx + 1, 2*col_idx + 1, str(new_cell), red_format) # new_cell
 
-    # Close the Pandas Excel writer and output the Excel file
     try:
         writer.save()
     except Exception:
