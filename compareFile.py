@@ -81,6 +81,37 @@ def _create_comparative_dfs(old_file, new_file, old_df, new_df, perfectly_matche
 
     return perfectly_matched_df, partially_matched_df, not_matched_to_old_df, new_rows_found_df
 
+# old_suffix = old_file.split('\\').pop().split('.')[0].replace(" ", "_")
+# new_suffix = new_file.split('\\').pop().split('.')[0].replace(" ", "_")
+
+# old_df = old_df[new_df.columns]
+# old_df = old_df.add_suffix(f"_{old_suffix}")
+# new_df = new_df.add_suffix(f"_{new_suffix}")
+
+# perfectly_matched_df = old_df[perfectly_matched_rows]
+
+# # Find the differences in rows between old and new
+# not_matched_to_old_df = old_df.loc[old_df.index.difference(new_df.index)]
+# new_rows_found_df = new_df.loc[new_df.index.difference(old_df.index)]
+
+# # Create a set of indices we don't want in the partially matched dataframe
+# exclude_indices = set(perfectly_matched_df.index) | set(not_matched_to_old_df.index) | set(new_rows_found_df.index)
+
+# # Now we will remove those indices from the old and new DataFrames to get the partial matches
+# old_partial_match = old_df.loc[~old_df.index.isin(exclude_indices)]
+# new_partial_match = new_df.loc[~new_df.index.isin(exclude_indices)]
+
+# # Now filter out the rows that don't match between the two datasets to get our partially matched dataframes
+# mismatched_to_new_rows = ~old_partial_match.eq(new_partial_match).all(axis=1)
+# mismatched_to_old_rows = ~new_partial_match.eq(old_partial_match).all(axis=1)
+
+# old_partially_matched_df = old_partial_match[mismatched_to_new_rows]
+# new_partially_matched_df = new_partial_match[mismatched_to_old_rows]
+
+# # Concatenate the old and new partially matched dataframes
+# partially_matched_df = pd.concat([old_partially_matched_df, new_partially_matched_df], axis=1)
+
+
 
 def _export_to_excel(old_df, new_df, perfectly_matched_df, partially_matched_df, not_matched_to_old_df, new_rows_found_df, exportName):
     export_filename = f'export/{exportName if exportName else str(time.time()).split(".")[0]}.xlsx'
