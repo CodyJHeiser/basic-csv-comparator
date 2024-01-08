@@ -22,16 +22,28 @@ def compare_csv(file1, file2, id_column):
     # Merging the dataframes on the ID column
     merged_df = pd.merge(df1, df2, on=id_column, how='outer')
 
+    # Interlace columns
+    columns = [id_column]
+    for col in df1.columns:
+        if col != id_column:
+            file2_col = col.replace('_file1', '_file2')
+            columns.append(col)  # Add file1 column
+            if file2_col in df2.columns:
+                columns.append(file2_col)  # Add file2 column
+
+    merged_df = merged_df[columns]
+
     # Function to apply the highlighting
     def highlight_diff(row):
         colors = {}
-        for col in df1.columns:
-            if col != id_column:
-                file1_val = clean_text(row[col])
-                file2_col = col.replace('_file1', '_file2')
-                file2_val = clean_text(row[file2_col]) if file2_col in merged_df.columns else None
-                color = 'background-color: yellow' if file1_val != file2_val else ''
-                colors[col] = color
+        for i in range(1, len(columns), 2):  # Start from 1 to skip the ID column
+            file1_col = columns[i]
+            file2_col = columns[i + 1] if i + 1 < len(columns) else None
+            file1_val = clean_text(row[file1_col])
+            file2_val = clean_text(row[file2_col]) if file2_col else None
+            color = 'background-color: yellow' if file1_val != file2_val else ''
+            colors[file1_col] = color
+            if file2_col:
                 colors[file2_col] = color
         return pd.Series(colors)
 
